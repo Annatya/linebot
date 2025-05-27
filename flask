@@ -1,0 +1,57 @@
+pip install flask line-bot-sdk openai python-dotenv
+
+import os
+from flask import Flask, request, abort
+from linebot import LineBotApi, WebhookHandler
+from linebot.exceptions import InvalidSignatureError
+from linebot.models import MessageEvent, TextMessage, TextSendMessage
+import openai
+from dotenv import load_dotenv
+
+load_dotenv()
+
+app = Flask(__name__)
+
+# 讀取環境變數
+line_bot_api = LineBotApi(os.getenv("C8nKJbKW2iU5ri3UoL6iWqF4LSXj6WwsG/gt+DwlWJslYjCAyyoHSgfyRY8TreAcEE0dKubBC7y2Dbix2A6znKXRaoRgY8Ws0KTSDxHwn0HQEkO2L6UPrMEd+rKSJSM1s9LsOT31lYJoE0RlPj/PKAdB04t89/1O/w1cDnyilFU="))
+handler = WebhookHandler(os.getenv("1eac9d351235b57a43b7f9d149d8a635"))
+
+@app.route("/callback", methods=['POST'])
+def callback():
+    # LINE簽章驗證
+    signature = request.headers['X-Line-Signature']
+    body = request.get_data(as_text=True)
+
+    try:
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        abort(400)
+
+    return 'OK'
+
+# 接收訊息，傳送給 GPT
+@handler.add(MessageEvent, message=TextMessage)
+def handle_message(event):
+    user_message = event.message.text
+
+    # 呼叫 OpenAI GPT 模型
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4-turbo",  # 或改用 gpt-4
+            messages=[
+                {"role": "system", "content": "你是一個親切的聊天助手。"},
+                {"role": "user", "content": user_message}
+            ]
+        )
+        reply_text = response['choices'][0]['message']['content'].strip()
+    except Exception as e:
+        reply_text = "GPT 回覆失敗：" + str(e)
+
+    # 回覆給使用者
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(text=reply_text)
+    )
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
